@@ -1,0 +1,16 @@
+local.properties
+gen/
+out/
+bin/
+.idea/
+*.iml
+target/
+.classpath
+.project
+.settings/
+project.properties
+gen-external-apklibs/
+.gradle/
+obj/
+build/
+libs/

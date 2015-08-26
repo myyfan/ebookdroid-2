@@ -1,0 +1,97 @@
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+
+	dependencies {
+		classpath 'com.android.tools.build:gradle:1.1.1'
+	}
+}
+
+apply plugin: 'android'
+
+File pprops
+if (System.getenv().containsKey('GRADLE_CREDS_FILE')) {
+	pprops = new File(System.getenv()['GRADLE_CREDS_FILE'])
+} else {
+	pprops = new File("..${File.separator}transapps-key${File.separator}mavencreds.prop")
+}
+
+repositories {
+	mavenCentral()
+
+
+	if (pprops.exists()) {
+		maven {
+			Properties mavenprops = new Properties()
+			mavenprops.load(new FileInputStream(pprops))
+			credentials {
+				username mavenprops.getProperty("read_username")
+				password mavenprops.getProperty("read_password")
+			}
+			url mavenprops.getProperty("read_nexus")
+		}
+	}
+}
+
+dependencies {
+	compile('com.android.support:appcompat-v7:19.0.+')
+	compile 'transapps:courseware-api:1.0.0-SNAPSHOT'
+}
+
+String getVersion() {
+	def cal = Calendar.instance
+	def Y = cal.get(Calendar.YEAR)
+	def M = cal.get(Calendar.MONTH) + 1
+	def D = cal.get(Calendar.DATE)
+	def H = "git log --format=%h -1".execute().text.replaceAll(/\s*$/, '')
+	def buildNumber = System.getenv('bamboo.buildNumber')
+	return "$Y.$M.$D.$H${buildNumber?"." + buildNumber:""}"
+}
+
+def home = System.getProperty('user.home')
+def ndk_home = System.getenv()['ANDROID_NDK_HOME']
+def keystore = "${home}${File.separator}.m2${File.separator}takey.keystore"
+
+android {
+	lintOptions {
+		abortOnError false
+	}
+
+	buildToolsVersion "20.0.0"
+	compileSdkVersion 16
+
+	if (pprops.exists()) {
+		File ksf = new File(keystore)
+		if (ksf.exists()) {
+			Properties keyprops = new Properties()
+			keyprops.load(new FileInputStream(pprops))
+			signingConfigs {
+				release {
+					storeFile file(keystore)
+					storePassword keyprops.getProperty("keystore_storePassword")
+					keyAlias keyprops.getProperty("keystore_keyAlias")
+					keyPassword keyprops.getProperty("keystore_keyPassword")
+				}
+			}
+			buildTypes {
+				release {
+					signingConfig signingConfigs.release
+				}
+			}
+		}
+	}
+
+	defaultConfig.versionName getVersion()
+	buildTypes.debug.versionNameSuffix = '-DEBUG'
+
+	// NDK build stuff.  This stuff seems to be under development, may change.
+	// Need to set jniLibs so the .so gets put in the apk.
+	sourceSets.main.jniLibs.srcDirs = ['libs']
+	task ndkBuild(type:Exec) {
+		commandLine "${ndk_home}${File.separator}ndk-build"
+	}
+	tasks.withType(JavaCompile) {
+		compileTask -> compileTask.dependsOn ndkBuild
+	}
+}
